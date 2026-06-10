@@ -1,8 +1,8 @@
-// v2-invoice-redeploy-1781073525
+// v3-email-receipt
 const https = require("https");
 
 const PRICE_IDS = {
-  "Family Experience": "price_1TfPf8LggV3pEL1x6n6jBrDI",  // test sandbox
+  "Family Experience": "price_1TfPf8LggV3pEL1x6n6jBrDI",
   "Dining Experience": "price_1TfQAdQ2TPcI4MhQON2OPS6o",
   "VIP Experience":    "price_1TfQAdQ2TPcI4MhQ0i1GxJpA",
 };
@@ -12,7 +12,7 @@ const ALLOWED_ORIGINS = [
   "https://www.emiratesourhome.ae",
 ];
 
-function stripeRequest(path, postData, secretKey) {
+function stripePost(path, postData, secretKey) {
   return new Promise((resolve, reject) => {
     const body = new URLSearchParams(postData).toString();
     const options = {
@@ -78,26 +78,38 @@ exports.handler = async (event) => {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
-    // Build custom fields to show date/slot on the Stripe checkout page
-    const postData = {
-      "mode": "payment",
-      "customer_email": email,
-      "line_items[0][price]": priceId,
-      "line_items[0][quantity]": String(quantity),
+    // Step 1: Create a Stripe Customer so invoice email is guaranteed to send
+    const customer = await stripePost("/v1/customers", {
+      "email": email,
+      "metadata[package]": pkg,
+      "metadata[date]": date,
+      "metadata[slot]": slot,
+    }, secretKey);
 
-      // Invoice creation — Stripe will email a receipt/invoice automatically
+    if (customer.error) {
+      return { statusCode: 500, headers: corsHeaders, body: "Stripe customer error: " + customer.error.message };
+    }
+
+    // Step 2: Create checkout session linked to the customer
+    const sessionData = {
+      "mode": "payment",
+      "customer": customer.id,
+
+      // Invoice with event details in description — this triggers the email
       "invoice_creation[enabled]": "true",
-      "invoice_creation[invoice_data][description]": `${pkg} — ${date} at ${slot}`,
+      "invoice_creation[invoice_data][description]": `${pkg} — ${date} at ${slot} (${quantity} ticket${quantity > 1 ? "s" : ""})`,
       "invoice_creation[invoice_data][metadata][event_date]": date,
       "invoice_creation[invoice_data][metadata][time_slot]": slot,
       "invoice_creation[invoice_data][metadata][package]": pkg,
       "invoice_creation[invoice_data][metadata][qty]": String(quantity),
+      "invoice_creation[invoice_data][footer]": "Thank you for booking with Emirates Our Home. We look forward to welcoming you!",
 
-      // Custom text shown on Stripe checkout page
-      "custom_text[submit][message]": `You are booking ${quantity} ticket(s) for ${pkg} on ${date} at ${slot}.`,
-      "custom_text[after_submit][message]": `A confirmation invoice will be emailed to ${email} after payment.`,
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": String(quantity),
 
-      // Metadata on the session itself
+      // Show event details on the Stripe checkout page itself
+      "custom_text[submit][message]": `Booking ${quantity} ticket${quantity > 1 ? "s" : ""} for ${pkg} on ${date} at ${slot}. A receipt will be emailed to ${email}.`,
+
       "metadata[package]": pkg,
       "metadata[date]": date,
       "metadata[slot]": slot,
@@ -107,9 +119,9 @@ exports.handler = async (event) => {
       "cancel_url":  "https://www.emiratesourhome.ae/tickets?cancelled=1",
     };
 
-    if (ref) postData["client_reference_id"] = ref;
+    if (ref) sessionData["client_reference_id"] = ref;
 
-    const session = await stripeRequest("/v1/checkout/sessions", postData, secretKey);
+    const session = await stripePost("/v1/checkout/sessions", sessionData, secretKey);
 
     if (session.error) {
       return { statusCode: 500, headers: corsHeaders, body: "Stripe error: " + session.error.message };
