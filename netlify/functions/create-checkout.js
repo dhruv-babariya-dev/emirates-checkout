@@ -1,8 +1,8 @@
-// v4-receipt-email
+// v5-production
 const https = require("https");
 
 const PRICE_IDS = {
-  "Family Experience": "price_1TfPf8LggV3pEL1x6n6jBrDI",
+  "Family Experience": "price_1TfQAdQ2TPcI4MhQSkYwGDxM",
   "Dining Experience": "price_1TfQAdQ2TPcI4MhQON2OPS6o",
   "VIP Experience":    "price_1TfQAdQ2TPcI4MhQ0i1GxJpA",
 };
@@ -78,7 +78,7 @@ exports.handler = async (event) => {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
-    // Create Stripe Customer
+    // Create Stripe Customer so invoice email is guaranteed
     const customer = await stripePost("/v1/customers", {
       "email": email,
       "metadata[package]": pkg,
@@ -90,20 +90,24 @@ exports.handler = async (event) => {
       return { statusCode: 500, headers: corsHeaders, body: "Customer error: " + customer.error.message };
     }
 
-    // Create checkout session with receipt_email explicitly set
-    // and payment_intent_data so Stripe sends a receipt automatically
     const sessionData = {
       "mode": "payment",
       "customer": customer.id,
 
-      // This is the key: receipt_email on payment_intent_data
-      // tells Stripe to send a payment receipt email directly
       "payment_intent_data[receipt_email]": email,
       "payment_intent_data[description]": `${pkg} — ${date} at ${slot} (${quantity} ticket${quantity > 1 ? "s" : ""})`,
       "payment_intent_data[metadata][package]": pkg,
       "payment_intent_data[metadata][event_date]": date,
       "payment_intent_data[metadata][time_slot]": slot,
       "payment_intent_data[metadata][qty]": String(quantity),
+
+      "invoice_creation[enabled]": "true",
+      "invoice_creation[invoice_data][description]": `${pkg} — ${date} at ${slot} (${quantity} ticket${quantity > 1 ? "s" : ""})`,
+      "invoice_creation[invoice_data][metadata][event_date]": date,
+      "invoice_creation[invoice_data][metadata][time_slot]": slot,
+      "invoice_creation[invoice_data][metadata][package]": pkg,
+      "invoice_creation[invoice_data][metadata][qty]": String(quantity),
+      "invoice_creation[invoice_data][footer]": "Thank you for booking with Emirates Our Home. We look forward to welcoming you!",
 
       "line_items[0][price]": priceId,
       "line_items[0][quantity]": String(quantity),
