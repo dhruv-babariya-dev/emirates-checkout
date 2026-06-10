@@ -1,4 +1,4 @@
-// v3-email-receipt
+// v4-receipt-email
 const https = require("https");
 
 const PRICE_IDS = {
@@ -78,7 +78,7 @@ exports.handler = async (event) => {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
-    // Step 1: Create a Stripe Customer so invoice email is guaranteed to send
+    // Create Stripe Customer
     const customer = await stripePost("/v1/customers", {
       "email": email,
       "metadata[package]": pkg,
@@ -87,27 +87,27 @@ exports.handler = async (event) => {
     }, secretKey);
 
     if (customer.error) {
-      return { statusCode: 500, headers: corsHeaders, body: "Stripe customer error: " + customer.error.message };
+      return { statusCode: 500, headers: corsHeaders, body: "Customer error: " + customer.error.message };
     }
 
-    // Step 2: Create checkout session linked to the customer
+    // Create checkout session with receipt_email explicitly set
+    // and payment_intent_data so Stripe sends a receipt automatically
     const sessionData = {
       "mode": "payment",
       "customer": customer.id,
 
-      // Invoice with event details in description — this triggers the email
-      "invoice_creation[enabled]": "true",
-      "invoice_creation[invoice_data][description]": `${pkg} — ${date} at ${slot} (${quantity} ticket${quantity > 1 ? "s" : ""})`,
-      "invoice_creation[invoice_data][metadata][event_date]": date,
-      "invoice_creation[invoice_data][metadata][time_slot]": slot,
-      "invoice_creation[invoice_data][metadata][package]": pkg,
-      "invoice_creation[invoice_data][metadata][qty]": String(quantity),
-      "invoice_creation[invoice_data][footer]": "Thank you for booking with Emirates Our Home. We look forward to welcoming you!",
+      // This is the key: receipt_email on payment_intent_data
+      // tells Stripe to send a payment receipt email directly
+      "payment_intent_data[receipt_email]": email,
+      "payment_intent_data[description]": `${pkg} — ${date} at ${slot} (${quantity} ticket${quantity > 1 ? "s" : ""})`,
+      "payment_intent_data[metadata][package]": pkg,
+      "payment_intent_data[metadata][event_date]": date,
+      "payment_intent_data[metadata][time_slot]": slot,
+      "payment_intent_data[metadata][qty]": String(quantity),
 
       "line_items[0][price]": priceId,
       "line_items[0][quantity]": String(quantity),
 
-      // Show event details on the Stripe checkout page itself
       "custom_text[submit][message]": `Booking ${quantity} ticket${quantity > 1 ? "s" : ""} for ${pkg} on ${date} at ${slot}. A receipt will be emailed to ${email}.`,
 
       "metadata[package]": pkg,
