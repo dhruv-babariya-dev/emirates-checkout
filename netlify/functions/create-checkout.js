@@ -92,7 +92,6 @@ exports.handler = async (event) => {
       "invoice_creation[invoice_data][metadata][time_slot]": slot,
       "invoice_creation[invoice_data][metadata][package]": pkg,
       "invoice_creation[invoice_data][metadata][qty]": String(quantity),
-      "invoice_creation[invoice_data][rendering_options][amount_tax_display]": "exclude_not_tax",
 
       // Custom text shown on Stripe checkout page
       "custom_text[submit][message]": `You are booking ${quantity} ticket(s) for ${pkg} on ${date} at ${slot}.`,
