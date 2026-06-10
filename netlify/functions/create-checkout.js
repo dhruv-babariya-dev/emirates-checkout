@@ -119,8 +119,8 @@ exports.handler = async (event) => {
       "metadata[slot]": slot,
       "metadata[qty]": String(quantity),
 
-      "success_url": "https://www.emiratesourhome.ae/tickets?success=1",
-      "cancel_url":  "https://www.emiratesourhome.ae/tickets?cancelled=1",
+      "success_url": "https://www.emiratesourhome.ae/success",
+      "cancel_url":  "https://www.emiratesourhome.ae/cancelled",
     };
 
     if (ref) sessionData["client_reference_id"] = ref;
