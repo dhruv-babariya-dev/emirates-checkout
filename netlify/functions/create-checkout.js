@@ -1,8 +1,8 @@
-// v1781071106
+// v2-invoice
 const https = require("https");
 
 const PRICE_IDS = {
-  "Family Experience": "price_1TfQAdQ2TPcI4MhQSkYwGDxM",
+  "Family Experience": "price_1TfPf8LggV3pEL1x6n6jBrDI",  // test sandbox
   "Dining Experience": "price_1TfQAdQ2TPcI4MhQON2OPS6o",
   "VIP Experience":    "price_1TfQAdQ2TPcI4MhQ0i1GxJpA",
 };
@@ -54,12 +54,12 @@ exports.handler = async (event) => {
   }
 
   const p = event.queryStringParameters || {};
-  const pkg  = p.pkg;
-  const qty  = p.qty;
+  const pkg   = p.pkg;
+  const qty   = p.qty;
   const email = p.email;
-  const ref  = p.ref || "";
-  const date = p.date || "";
-  const slot = p.slot || "";
+  const ref   = p.ref || "";
+  const date  = p.date || "";
+  const slot  = p.slot || "";
 
   if (!pkg || !qty || !email) {
     return { statusCode: 400, headers: corsHeaders, body: "Missing: pkg, qty, email" };
@@ -76,26 +76,41 @@ exports.handler = async (event) => {
   }
 
   try {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+
+    // Build custom fields to show date/slot on the Stripe checkout page
     const postData = {
       "mode": "payment",
       "customer_email": email,
       "line_items[0][price]": priceId,
       "line_items[0][quantity]": String(quantity),
+
+      // Invoice creation — Stripe will email a receipt/invoice automatically
+      "invoice_creation[enabled]": "true",
+      "invoice_creation[invoice_data][description]": `${pkg} — ${date} at ${slot}`,
+      "invoice_creation[invoice_data][metadata][event_date]": date,
+      "invoice_creation[invoice_data][metadata][time_slot]": slot,
+      "invoice_creation[invoice_data][metadata][package]": pkg,
+      "invoice_creation[invoice_data][metadata][qty]": String(quantity),
+      "invoice_creation[invoice_data][rendering_options][amount_tax_display]": "exclude_not_tax",
+
+      // Custom text shown on Stripe checkout page
+      "custom_text[submit][message]": `You are booking ${quantity} ticket(s) for ${pkg} on ${date} at ${slot}.`,
+      "custom_text[after_submit][message]": `A confirmation invoice will be emailed to ${email} after payment.`,
+
+      // Metadata on the session itself
       "metadata[package]": pkg,
       "metadata[date]": date,
       "metadata[slot]": slot,
       "metadata[qty]": String(quantity),
+
       "success_url": "https://www.emiratesourhome.ae/tickets?success=1",
-      "cancel_url": "https://www.emiratesourhome.ae/tickets?cancelled=1",
+      "cancel_url":  "https://www.emiratesourhome.ae/tickets?cancelled=1",
     };
 
     if (ref) postData["client_reference_id"] = ref;
 
-    const session = await stripeRequest(
-      "/v1/checkout/sessions",
-      postData,
-      process.env.STRIPE_SECRET_KEY
-    );
+    const session = await stripeRequest("/v1/checkout/sessions", postData, secretKey);
 
     if (session.error) {
       return { statusCode: 500, headers: corsHeaders, body: "Stripe error: " + session.error.message };
